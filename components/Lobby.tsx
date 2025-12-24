@@ -25,7 +25,7 @@ export const Lobby: React.FC<LobbyProps> = ({ currentUser }) => {
   const [challengeStatus, setChallengeStatus] = useState<'idle' | 'waiting' | 'accepted' | 'rejected' | 'timeout' | 'offline_warning'>('idle');
   
   // -- Refs for timer management --
-  const timeoutRef = useRef<NodeJS.Timeout | null>(null);
+  const timeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   // 1. Fetch Users
   useEffect(() => {

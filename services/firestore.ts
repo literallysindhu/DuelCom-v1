@@ -4,6 +4,7 @@ import {
   setDoc, 
   getDoc, 
   updateDoc, 
+  deleteDoc,
   collection, 
   query, 
   where, 
@@ -58,6 +59,12 @@ export const updateUserProfile = async (uid: string, data: Partial<UserProfile>)
 
   const userRef = doc(db, 'users', uid);
   await updateDoc(userRef, cleanData);
+};
+
+export const deleteUserProfile = async (uid: string) => {
+  if (!uid) return;
+  const userRef = doc(db, 'users', uid);
+  await deleteDoc(userRef);
 };
 
 export const setUserOnlineStatus = async (uid: string, status: 'online' | 'offline') => {
