@@ -86,8 +86,11 @@ const App: React.FC = () => {
     if (!currentUser?.uid) return;
 
     const handleVisibilityChange = () => {
-       const status = document.hidden ? 'offline' : 'online';
-       setUserOnlineStatus(currentUser.uid, status);
+       // Only update to online when visible. 
+       // We DO NOT set offline on hidden (minimize) to prevent accidental forfeits.
+       if (!document.hidden) {
+           setUserOnlineStatus(currentUser.uid, 'online');
+       }
     };
 
     document.addEventListener("visibilitychange", handleVisibilityChange);
