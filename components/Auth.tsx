@@ -53,6 +53,7 @@ export const Auth: React.FC<AuthProps> = ({ onLogin }) => {
       console.error(err);
       let msg = 'Authentication failed';
       if (err.code === 'auth/invalid-credential') msg = 'Invalid email or password';
+      if (err.code === 'auth/user-not-found') msg = 'Account not found. Please Sign Up.';
       if (err.code === 'auth/email-already-in-use') msg = 'Email already registered';
       if (err.code === 'auth/weak-password') msg = 'Password should be at least 6 characters';
       setError(msg);
