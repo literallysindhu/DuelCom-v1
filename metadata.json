@@ -1,0 +1,5 @@
+{
+  "name": "DuelCom",
+  "description": "A high-stakes real-time 1v1 competitive coding platform where you battle against AI opponents to solve algorithmic problems before the time runs out.",
+  "requestFramePermissions": []
+}
