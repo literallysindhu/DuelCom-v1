@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { User, Trophy, XCircle, Edit2, Check, Search, Sword, CalendarClock } from 'lucide-react';
 import { UserProfile, Difficulty, Language } from '../types';
-import { getAllUsers, updateUserProfile, sendChallenge } from '../services/firestore';
+import { getAllUsers, updateUserProfile, sendChallenge, updateChallengeProblem } from '../services/firestore';
 import { generateProblem } from '../services/geminiService';
 
 interface ProfileProps {
@@ -74,9 +74,6 @@ export const Profile: React.FC<ProfileProps> = ({ currentUser, onUpdateUser }) =
         }
       }
 
-      // Generate problem specifically for this duel
-      const problem = await generateProblem(duelDiff, duelLang);
-      
       // Ensure we are passing clean objects
       const opponentData = {
          uid: selectedOpponent.uid,
@@ -90,15 +87,21 @@ export const Profile: React.FC<ProfileProps> = ({ currentUser, onUpdateUser }) =
           avatar: currentUser.avatar
       } as UserProfile;
 
-      await sendChallenge(
+      // Optimistic Send: Send immediately with null problem
+      const { id } = await sendChallenge(
         myData, 
         opponentData, 
         duelDiff, 
         duelLang, 
-        problem,
+        null,
         timestamp
       );
       
+      // Background Generation: Generate problem and update challenge
+      generateProblem(duelDiff, duelLang).then(problem => {
+          updateChallengeProblem(id, problem).catch(e => console.error("Profile: Failed to update problem", e));
+      });
+
       alert(timestamp 
         ? `Scheduled duel request sent to ${selectedOpponent.displayName}!`
         : `Instant duel request sent to ${selectedOpponent.displayName}!`

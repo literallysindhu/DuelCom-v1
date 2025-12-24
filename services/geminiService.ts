@@ -1,13 +1,13 @@
 import { GoogleGenAI, Type, Schema } from "@google/genai";
 import { Problem, Difficulty, Language } from '../types';
+import { geminiKey } from './firebase';
 
 // Helper to get AI instance safely
 const getAI = () => {
-  const apiKey = process.env.API_KEY;
-  if (!apiKey) {
+  if (!geminiKey) {
     throw new Error("Gemini API Key is missing. Please configure the application.");
   }
-  return new GoogleGenAI({ apiKey });
+  return new GoogleGenAI({ apiKey: geminiKey });
 };
 
 // Helper to generate a random ID

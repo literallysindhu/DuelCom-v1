@@ -63,6 +63,7 @@ export interface UserProfile {
   wins: number;
   losses: number;
   status: 'online' | 'offline' | 'in-game';
+  lastSeen?: number;
 }
 
 export interface Challenge {

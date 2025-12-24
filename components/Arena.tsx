@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Clock, Play, AlertCircle, CheckCircle2, XCircle, Flag, Hourglass } from 'lucide-react';
+import { Clock, Play, AlertCircle, CheckCircle2, XCircle, Flag, Hourglass, Loader2 } from 'lucide-react';
 import { CodeEditor } from './CodeEditor';
 import { Problem, PlayerState, GameState } from '../types';
 
@@ -27,6 +27,7 @@ export const Arena: React.FC<ArenaProps> = ({
   onForfeit
 }) => {
   const [activeTab, setActiveTab] = useState<'description' | 'examples'>('description');
+  const [isSurrendering, setIsSurrendering] = useState(false);
   
   // Calculate minutes and seconds
   const mins = Math.floor(timeLeft / 60);
@@ -39,6 +40,7 @@ export const Arena: React.FC<ArenaProps> = ({
 
   const handleSurrender = () => {
     if (window.confirm("Are you sure you want to surrender? This will be recorded as a loss.")) {
+      setIsSurrendering(true);
       onForfeit();
     }
   };
@@ -74,11 +76,15 @@ export const Arena: React.FC<ArenaProps> = ({
            {/* Surrender Button */}
            <button 
              onClick={handleSurrender}
-             className="p-2 text-zinc-500 hover:text-red-400 hover:bg-red-400/10 rounded-lg transition-colors"
+             disabled={isSurrendering}
+             className="flex items-center gap-2 px-3 py-1.5 text-zinc-500 hover:text-red-400 hover:bg-red-400/10 rounded-lg transition-colors disabled:opacity-50 disabled:cursor-not-allowed border border-transparent hover:border-red-400/20"
              title="Surrender / Exit Duel"
            >
-             <Flag className="w-5 h-5" />
+             {isSurrendering ? <Loader2 className="w-4 h-4 animate-spin text-red-400" /> : <Flag className="w-4 h-4" />}
+             <span className="text-xs font-bold uppercase hidden md:inline">Surrender</span>
            </button>
+
+          <div className="h-8 w-px bg-dark-border mx-2"></div>
 
           <div className="flex flex-col items-end">
             <span className="text-sm font-bold text-white">{opponentState.name}</span>

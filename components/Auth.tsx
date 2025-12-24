@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
-import { Terminal, Lock, Mail, ArrowRight } from 'lucide-react';
-import { createUserWithEmailAndPassword, signInWithEmailAndPassword, updateProfile } from 'firebase/auth';
+import { Terminal, Lock, Mail, ArrowRight, CheckSquare, Square } from 'lucide-react';
+import { createUserWithEmailAndPassword, signInWithEmailAndPassword, updateProfile, setPersistence, browserLocalPersistence, browserSessionPersistence } from 'firebase/auth';
 import { auth } from '../services/firebase';
 import { createUserProfile } from '../services/firestore';
 import { UserProfile } from '../types';
@@ -15,6 +15,7 @@ export const Auth: React.FC<AuthProps> = ({ onLogin }) => {
   const [password, setPassword] = useState('');
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
+  const [rememberMe, setRememberMe] = useState(true);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -25,6 +26,9 @@ export const Auth: React.FC<AuthProps> = ({ onLogin }) => {
       if (!email || !password) {
         throw new Error('Email and password are required');
       }
+
+      // Set persistence based on checkbox
+      await setPersistence(auth, rememberMe ? browserLocalPersistence : browserSessionPersistence);
 
       let userCredential;
       if (isSignUp) {
@@ -106,6 +110,19 @@ export const Auth: React.FC<AuthProps> = ({ onLogin }) => {
                   required
                 />
               </div>
+            </div>
+
+            {/* Remember Me Checkbox */}
+            <div 
+              className="flex items-center gap-2 cursor-pointer" 
+              onClick={() => setRememberMe(!rememberMe)}
+            >
+              {rememberMe ? (
+                <CheckSquare className="w-4 h-4 text-brand-500" />
+              ) : (
+                <Square className="w-4 h-4 text-zinc-500" />
+              )}
+              <span className="text-sm text-zinc-300 select-none">Remember me for a week</span>
             </div>
 
             {error && (

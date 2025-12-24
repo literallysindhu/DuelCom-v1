@@ -10,7 +10,9 @@ import {
   getDocs, 
   addDoc,
   onSnapshot,
-  increment
+  increment,
+  orderBy,
+  limit
 } from 'firebase/firestore';
 import { UserProfile, Challenge, Difficulty, Language, Problem } from '../types';
 
@@ -30,13 +32,15 @@ export const createUserProfile = async (user: any) => {
       rating: 1200,
       wins: 0,
       losses: 0,
-      status: 'online'
+      status: 'online',
+      lastSeen: Date.now()
     };
     await setDoc(userRef, newProfile);
     return newProfile;
   }
   
-  await updateDoc(userRef, { status: 'online' });
+  // Update last seen on login
+  await updateDoc(userRef, { status: 'online', lastSeen: Date.now() });
   
   const userData = snapshot.data();
   return { ...userData, uid: user.uid } as UserProfile;
@@ -56,10 +60,47 @@ export const updateUserProfile = async (uid: string, data: Partial<UserProfile>)
   await updateDoc(userRef, cleanData);
 };
 
+export const setUserOnlineStatus = async (uid: string, status: 'online' | 'offline') => {
+  if (!uid) return;
+  const userRef = doc(db, 'users', uid);
+  await updateDoc(userRef, { 
+    status,
+    lastSeen: Date.now()
+  });
+};
+
 export const getAllUsers = async (): Promise<UserProfile[]> => {
-  const q = query(collection(db, 'users'));
+  const q = query(collection(db, 'users'), orderBy('lastSeen', 'desc'), limit(50));
   const snapshot = await getDocs(q);
   return snapshot.docs.map(doc => ({ ...doc.data(), uid: doc.id } as UserProfile));
+};
+
+export const subscribeToUserProfile = (uid: string, callback: (user: UserProfile) => void) => {
+  if (!uid) return () => {};
+  const userRef = doc(db, 'users', uid);
+  return onSnapshot(userRef, (doc) => {
+    if (doc.exists()) {
+      callback({ ...doc.data(), uid: doc.id } as UserProfile);
+    }
+  });
+};
+
+export const getUserHistory = async (uid: string): Promise<Challenge[]> => {
+  if (!uid) return [];
+  
+  // Fetching where user is 'from' OR 'to' without complex ordering to avoid composite index requirements
+  const q1 = query(collection(db, 'duels'), where('fromId', '==', uid));
+  const q2 = query(collection(db, 'duels'), where('toId', '==', uid));
+  
+  const [snap1, snap2] = await Promise.all([getDocs(q1), getDocs(q2)]);
+  
+  const results = new Map<string, Challenge>();
+  
+  snap1.docs.forEach(doc => results.set(doc.id, { id: doc.id, ...doc.data() } as Challenge));
+  snap2.docs.forEach(doc => results.set(doc.id, { id: doc.id, ...doc.data() } as Challenge));
+  
+  // Sort client-side to avoid index error
+  return Array.from(results.values()).sort((a, b) => b.timestamp - a.timestamp);
 };
 
 export const sendChallenge = async (
@@ -67,7 +108,7 @@ export const sendChallenge = async (
   toUser: UserProfile, 
   difficulty: Difficulty, 
   language: Language,
-  problem: Problem,
+  problem: Problem | null,
   scheduledTime?: number
 ) => {
   const challenge: any = {
@@ -80,7 +121,7 @@ export const sendChallenge = async (
     status: 'pending',
     difficulty,
     language,
-    problem,
+    problem: problem || null,
     timestamp: Date.now(),
     fromCheckedIn: false,
     toCheckedIn: false
@@ -92,6 +133,12 @@ export const sendChallenge = async (
   
   const docRef = await addDoc(collection(db, 'duels'), challenge);
   return { id: docRef.id, ...challenge };
+};
+
+export const updateChallengeProblem = async (challengeId: string, problem: Problem) => {
+  if (!challengeId) return;
+  const challengeRef = doc(db, 'duels', challengeId);
+  await updateDoc(challengeRef, { problem });
 };
 
 export const respondToChallenge = async (challengeId: string, status: Challenge['status']) => {
@@ -176,7 +223,6 @@ export const subscribeToScheduledChallenges = (userId: string, callback: (challe
     callback(Array.from(challengesMap.values()));
   };
 
-  // Split query to avoid complex permissions/indexing issues with 'OR' conditions
   const q1 = query(
     collection(db, 'duels'),
     where('status', 'in', ['accepted', 'in_progress']),
@@ -218,6 +264,16 @@ export const subscribeToActiveDuel = (challengeId: string, callback: (challenge:
       callback({ id: doc.id, ...doc.data() } as Challenge);
     }
   });
+};
+
+export const subscribeToSingleChallenge = (challengeId: string, callback: (challenge: Challenge) => void) => {
+    if (!challengeId) return () => {};
+    const docRef = doc(db, 'duels', challengeId);
+    return onSnapshot(docRef, (doc) => {
+        if (doc.exists()) {
+            callback({ id: doc.id, ...doc.data() } as Challenge);
+        }
+    });
 };
 
 export const completeDuel = async (challengeId: string, winnerId: string, loserId: string, winReason?: string) => {
