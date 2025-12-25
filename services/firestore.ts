@@ -16,35 +16,54 @@ import {
   limit
 } from 'firebase/firestore';
 import { UserProfile, Challenge, Difficulty, Language, Problem } from '../types';
+import { User } from 'firebase/auth';
 
-export const createUserProfile = async (user: any) => {
-  if (!user || !user.uid) throw new Error("Invalid user data for profile creation");
+const isMobileDevice = () => {
+    return /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent);
+};
+
+export const syncUserProfile = async (user: User): Promise<UserProfile | null> => {
+  if (!user || !user.uid) throw new Error("Invalid user data for profile sync");
   
   const userRef = doc(db, 'users', user.uid);
   const snapshot = await getDoc(userRef);
+  const deviceType = isMobileDevice() ? 'mobile' : 'desktop';
   
-  if (!snapshot.exists()) {
-    const newProfile: UserProfile = {
-      uid: user.uid,
-      displayName: user.displayName || user.email?.split('@')[0] || 'User',
-      email: user.email || '',
-      avatar: user.photoURL || `https://api.dicebear.com/7.x/avataaars/svg?seed=${user.uid}`,
-      bio: "Ready to code!",
-      rating: 1200,
-      wins: 0,
-      losses: 0,
-      status: 'online',
-      lastSeen: Date.now()
-    };
-    await setDoc(userRef, newProfile);
-    return newProfile;
+  if (snapshot.exists()) {
+    // User exists in Firestore, update status and device
+    await updateDoc(userRef, { 
+        status: 'online', 
+        deviceType: deviceType,
+        lastSeen: Date.now() 
+    });
+    return { ...snapshot.data(), uid: user.uid, deviceType } as UserProfile;
   }
   
-  // Update last seen on login
-  await updateDoc(userRef, { status: 'online', lastSeen: Date.now() });
-  
-  const userData = snapshot.data();
-  return { ...userData, uid: user.uid } as UserProfile;
+  // User NOT in Firestore.
+  // Check if this is a freshly created Auth user (created within last 60 seconds)
+  const creationTime = user.metadata.creationTime ? new Date(user.metadata.creationTime).getTime() : 0;
+  const isNewAccount = (Date.now() - creationTime) < 60000;
+
+  if (isNewAccount) {
+      const newProfile: UserProfile = {
+        uid: user.uid,
+        displayName: user.displayName || user.email?.split('@')[0] || 'User',
+        email: user.email || '',
+        avatar: user.photoURL || `https://api.dicebear.com/7.x/avataaars/svg?seed=${user.uid}`,
+        bio: "Ready to code!",
+        rating: 1200,
+        wins: 0,
+        losses: 0,
+        status: 'online',
+        deviceType: deviceType,
+        lastSeen: Date.now()
+      };
+      await setDoc(userRef, newProfile);
+      return newProfile;
+  }
+
+  // Old Auth user but no Firestore data (Zombie)
+  return null;
 };
 
 export const updateUserProfile = async (uid: string, data: Partial<UserProfile>) => {
@@ -70,8 +89,11 @@ export const deleteUserProfile = async (uid: string) => {
 export const setUserOnlineStatus = async (uid: string, status: 'online' | 'offline') => {
   if (!uid) return;
   const userRef = doc(db, 'users', uid);
+  const deviceType = isMobileDevice() ? 'mobile' : 'desktop';
+  
   await updateDoc(userRef, { 
     status,
+    deviceType: status === 'online' ? deviceType : undefined,
     lastSeen: Date.now()
   });
 };
@@ -297,4 +319,21 @@ export const completeDuel = async (challengeId: string, winnerId: string, loserI
   }
   
   await updateDoc(challengeRef, updateData);
+};
+
+export const resetAllData = async () => {
+  const usersQ = query(collection(db, 'users'));
+  const duelsQ = query(collection(db, 'duels'));
+  
+  const [usersSnapshot, duelsSnapshot] = await Promise.all([
+    getDocs(usersQ),
+    getDocs(duelsQ)
+  ]);
+  
+  const promises = [
+    ...usersSnapshot.docs.map(doc => deleteDoc(doc.ref)),
+    ...duelsSnapshot.docs.map(doc => deleteDoc(doc.ref))
+  ];
+  
+  await Promise.all(promises);
 };

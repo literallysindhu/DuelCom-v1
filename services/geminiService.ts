@@ -1,19 +1,16 @@
-import { GoogleGenAI, Type, Schema } from "@google/genai";
-import { Problem, Difficulty, Language } from '../types';
-import { geminiKey } from './firebase';
 
-// Helper to get AI instance safely
+import { GoogleGenAI, Type } from "@google/genai";
+import { Problem, Difficulty, Language } from '../types';
+
+// Helper to get AI instance safely using process.env.API_KEY exclusively as per guidelines
 const getAI = () => {
-  if (!geminiKey) {
-    throw new Error("Gemini API Key is missing. Please configure the application.");
-  }
-  return new GoogleGenAI({ apiKey: geminiKey });
+  return new GoogleGenAI({ apiKey: process.env.API_KEY });
 };
 
 // Helper to generate a random ID
 const generateId = () => Math.random().toString(36).substring(2, 9);
 
-const problemSchema: Schema = {
+const problemSchema = {
   type: Type.OBJECT,
   properties: {
     title: { type: Type.STRING },
@@ -94,7 +91,7 @@ interface JudgeResult {
   feedback: string;
 }
 
-const judgeSchema: Schema = {
+const judgeSchema = {
   type: Type.OBJECT,
   properties: {
     correct: { type: Type.BOOLEAN },
@@ -150,7 +147,7 @@ export const compareSolutions = async (
     
     try {
       const ai = getAI();
-      const comparisonSchema: Schema = {
+      const comparisonSchema = {
           type: Type.OBJECT,
           properties: {
             winner: { type: Type.STRING, enum: ['A', 'B', 'DRAW'] },

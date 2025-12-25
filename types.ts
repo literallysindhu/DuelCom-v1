@@ -63,6 +63,7 @@ export interface UserProfile {
   wins: number;
   losses: number;
   status: 'online' | 'offline' | 'in-game';
+  deviceType?: 'mobile' | 'desktop';
   lastSeen?: number;
 }
 

@@ -1,14 +1,15 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { Search, Sword, User, Wifi, Trophy, X, Calendar, Clock, Loader2, AlertCircle } from 'lucide-react';
+import { Search, Sword, User, Wifi, Trophy, X, Clock, Loader2, AlertCircle, Smartphone } from 'lucide-react';
 import { Difficulty, Language, UserProfile, Challenge } from '../types';
 import { getAllUsers, sendChallenge, subscribeToSingleChallenge, respondToChallenge, updateChallengeProblem } from '../services/firestore';
 import { generateProblem } from '../services/geminiService';
 
 interface LobbyProps {
   currentUser: UserProfile;
+  onViewProfile: (userId: string) => void;
 }
 
-export const Lobby: React.FC<LobbyProps> = ({ currentUser }) => {
+export const Lobby: React.FC<LobbyProps> = ({ currentUser, onViewProfile }) => {
   const [users, setUsers] = useState<UserProfile[]>([]);
   const [searchQuery, setSearchQuery] = useState('');
   const [loading, setLoading] = useState(true);
@@ -22,7 +23,7 @@ export const Lobby: React.FC<LobbyProps> = ({ currentUser }) => {
   // -- Sending & Waiting State --
   const [sending, setSending] = useState(false);
   const [activeChallengeId, setActiveChallengeId] = useState<string | null>(null);
-  const [challengeStatus, setChallengeStatus] = useState<'idle' | 'waiting' | 'accepted' | 'rejected' | 'timeout' | 'offline_warning'>('idle');
+  const [challengeStatus, setChallengeStatus] = useState<'idle' | 'waiting' | 'accepted' | 'rejected' | 'timeout' | 'offline_warning' | 'mobile_warning'>('idle');
   
   // -- Refs for timer management --
   const timeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -62,7 +63,6 @@ export const Lobby: React.FC<LobbyProps> = ({ currentUser }) => {
         if (challenge.status === 'accepted') {
             setChallengeStatus('accepted');
             if (timeoutRef.current) clearTimeout(timeoutRef.current);
-            // App.tsx handles the redirection to Arena via scheduledChallenges listener
         } else if (challenge.status === 'rejected') {
             setChallengeStatus('rejected');
             if (timeoutRef.current) clearTimeout(timeoutRef.current);
@@ -83,6 +83,13 @@ export const Lobby: React.FC<LobbyProps> = ({ currentUser }) => {
         setChallengeStatus('offline_warning');
         return;
     }
+
+    // Check if on mobile
+    if (opponent.deviceType === 'mobile') {
+        setSelectedOpponent(opponent);
+        setChallengeStatus('mobile_warning');
+        return;
+    }
     
     setSelectedOpponent(opponent);
     setDuelDiff(Difficulty.EASY);
@@ -101,11 +108,9 @@ export const Lobby: React.FC<LobbyProps> = ({ currentUser }) => {
         if (scheduledTime) {
             timestamp = new Date(scheduledTime).getTime();
         } else if (forceSchedule) {
-             // Default to 1 hour from now if forced to schedule without time picked (fallback)
              timestamp = Date.now() + 3600000; 
         }
 
-        // Fast Send: Create challenge first without problem (optimistic UI)
         const { id } = await sendChallenge(
             currentUser, 
             selectedOpponent, 
@@ -115,21 +120,17 @@ export const Lobby: React.FC<LobbyProps> = ({ currentUser }) => {
             timestamp
         );
         
-        // Background Generation: Generate problem and update challenge silently
         generateProblem(duelDiff, duelLang).then(problem => {
              updateChallengeProblem(id, problem).catch(e => console.error("Problem update failed", e));
         });
 
         if (timestamp) {
-            // If scheduled, we don't wait for immediate response
             alert(`Challenge scheduled with ${selectedOpponent.displayName}! Check notifications.`);
             resetModal();
         } else {
-            // Immediate Duel: Start Waiting
             setActiveChallengeId(id);
             setChallengeStatus('waiting');
             
-            // Start 30s Timeout
             timeoutRef.current = setTimeout(async () => {
                  setChallengeStatus('timeout');
                  await respondToChallenge(id, 'expired');
@@ -191,11 +192,11 @@ export const Lobby: React.FC<LobbyProps> = ({ currentUser }) => {
            {filteredUsers.map(user => (
              <div key={user.uid} className="bg-dark-surface border border-dark-border rounded-xl p-5 hover:border-zinc-600 transition-all shadow-md group relative overflow-hidden">
                 <div className="flex items-center gap-4">
-                    <div className="relative">
+                    <div className="relative cursor-pointer" onClick={() => onViewProfile(user.uid)}>
                         <img 
                             src={user.avatar} 
                             alt={user.displayName} 
-                            className="w-16 h-16 rounded-full object-cover border-2 border-dark-border"
+                            className="w-16 h-16 rounded-full object-cover border-2 border-dark-border hover:border-brand-500 transition-colors"
                              onError={(e) => {
                                 const target = e.target as HTMLImageElement;
                                 const fallback = `https://api.dicebear.com/7.x/avataaars/svg?seed=${user.uid}`;
@@ -206,7 +207,9 @@ export const Lobby: React.FC<LobbyProps> = ({ currentUser }) => {
                     </div>
                     
                     <div className="flex-1 min-w-0">
-                        <h3 className="text-lg font-bold text-white truncate">{user.displayName || 'Unknown User'}</h3>
+                        <h3 className="text-lg font-bold text-white truncate hover:text-brand-400 cursor-pointer" onClick={() => onViewProfile(user.uid)}>
+                            {user.displayName || 'Unknown User'}
+                        </h3>
                         <div className="flex items-center gap-3 text-xs text-zinc-400 mt-1">
                             <span className="flex items-center gap-1">
                                 <Trophy className="w-3 h-3 text-yellow-400" /> {user.wins || 0}
@@ -217,21 +220,36 @@ export const Lobby: React.FC<LobbyProps> = ({ currentUser }) => {
                         </div>
                     </div>
 
-                    <button 
-                        onClick={() => handleChallengeClick(user)}
-                        className="p-3 bg-brand-600 hover:bg-brand-500 text-white rounded-xl shadow-lg transform transition-all hover:scale-105 active:scale-95"
-                        title="Challenge Player"
-                    >
-                        <Sword className="w-5 h-5" />
-                    </button>
+                    <div className="flex flex-col gap-2">
+                        <button 
+                            onClick={() => handleChallengeClick(user)}
+                            className="p-2.5 bg-brand-600 hover:bg-brand-500 text-white rounded-lg shadow-lg transform transition-all hover:scale-105 active:scale-95"
+                            title="Challenge Player"
+                        >
+                            <Sword className="w-4 h-4" />
+                        </button>
+                        <button 
+                            onClick={() => onViewProfile(user.uid)}
+                            className="p-2.5 bg-zinc-800 hover:bg-zinc-700 text-zinc-300 rounded-lg transform transition-all hover:scale-105 active:scale-95"
+                            title="View Profile"
+                        >
+                            <User className="w-4 h-4" />
+                        </button>
+                    </div>
                 </div>
                 
                 {/* Status Badge */}
                 <div className="mt-4 flex items-center gap-2 text-xs">
                     {user.status === 'online' ? (
-                         <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-green-400/10 text-green-400 border border-green-400/20">
-                             <Wifi className="w-3 h-3" /> Online
-                         </span>
+                        user.deviceType === 'mobile' ? (
+                            <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-green-400/10 text-green-400 border border-green-400/20">
+                                <Smartphone className="w-3.5 h-3.5" /> Mobile
+                            </span>
+                        ) : (
+                            <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-green-400/10 text-green-400 border border-green-400/20">
+                                <Wifi className="w-3.5 h-3.5" /> Online
+                            </span>
+                        )
                     ) : (
                          <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-zinc-700/50 text-zinc-400 border border-zinc-700">
                              Offline
@@ -258,7 +276,9 @@ export const Lobby: React.FC<LobbyProps> = ({ currentUser }) => {
             <div className="flex justify-between items-start mb-6">
                  <div>
                     <h3 className="text-xl font-bold text-white">
-                        {challengeStatus === 'offline_warning' ? 'Offline Opponent' : `Challenge ${selectedOpponent.displayName}`}
+                        {challengeStatus === 'offline_warning' ? 'Offline Opponent' : 
+                         challengeStatus === 'mobile_warning' ? 'Mobile Warning' :
+                         `Challenge ${selectedOpponent.displayName}`}
                     </h3>
                  </div>
                  {!sending && challengeStatus === 'idle' && (
@@ -268,7 +288,21 @@ export const Lobby: React.FC<LobbyProps> = ({ currentUser }) => {
                  )}
             </div>
 
-            {/* 1. Offline Warning State */}
+            {/* Mobile Warning State */}
+            {challengeStatus === 'mobile_warning' && (
+                <div className="text-center py-6">
+                    <div className="w-16 h-16 bg-yellow-500/10 text-yellow-500 rounded-full flex items-center justify-center mx-auto mb-6">
+                        <Smartphone className="w-8 h-8" />
+                    </div>
+                    <p className="text-white font-bold mb-2">This person is on mobile right now.</p>
+                    <p className="text-zinc-400 text-sm mb-6">Try again later when they are on a desktop for a fair duel.</p>
+                    <button onClick={resetModal} className="w-full py-3 bg-zinc-800 hover:bg-zinc-700 text-white rounded-xl font-bold">
+                        Got it
+                    </button>
+                </div>
+            )}
+
+            {/* Offline Warning State */}
             {challengeStatus === 'offline_warning' && (
                 <div className="space-y-6">
                     <div className="bg-yellow-500/10 border border-yellow-500/20 p-4 rounded-xl flex items-start gap-3">

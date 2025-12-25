@@ -1,3 +1,4 @@
+
 import React, { useState } from 'react';
 import { Settings, Save, AlertTriangle } from 'lucide-react';
 import { saveConfig } from '../services/firebase';
@@ -11,7 +12,6 @@ export const ConfigForm: React.FC = () => {
     messagingSenderId: '',
     appId: ''
   });
-  const [geminiKey, setGeminiKey] = useState('');
 
   const handleSave = (e: React.FormEvent) => {
     e.preventDefault();
@@ -20,8 +20,7 @@ export const ConfigForm: React.FC = () => {
         return;
     }
     saveConfig({
-      firebase: firebaseConfig,
-      gemini: { apiKey: geminiKey }
+      firebase: firebaseConfig
     });
   };
 
@@ -45,7 +44,7 @@ export const ConfigForm: React.FC = () => {
         <div className="bg-yellow-500/10 border border-yellow-500/20 rounded-lg p-4 mb-6 flex items-start gap-3">
           <AlertTriangle className="w-5 h-5 text-yellow-400 shrink-0 mt-0.5" />
           <p className="text-sm text-yellow-200">
-            Environment variables are missing. Please enter your Firebase and Gemini credentials manually. 
+            Environment variables are missing. Please enter your Firebase credentials manually. 
             These will be saved locally in your browser.
           </p>
         </div>
@@ -99,16 +98,6 @@ export const ConfigForm: React.FC = () => {
                   className="w-full bg-dark-bg border border-dark-border rounded px-3 py-2 text-white text-sm focus:border-brand-500 focus:outline-none"
                 />
             </div>
-          </div>
-
-          <div className="space-y-4">
-            <h2 className="text-sm font-bold text-zinc-500 uppercase tracking-wider">Gemini AI</h2>
-             <input
-                 placeholder="Gemini API Key"
-                 value={geminiKey}
-                 onChange={(e) => setGeminiKey(e.target.value)}
-                 className="w-full bg-dark-bg border border-dark-border rounded px-3 py-2 text-white text-sm focus:border-brand-500 focus:outline-none"
-               />
           </div>
 
           <button

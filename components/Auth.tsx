@@ -1,8 +1,8 @@
 import React, { useState } from 'react';
 import { Terminal, Lock, Mail, ArrowRight, CheckSquare, Square } from 'lucide-react';
-import { createUserWithEmailAndPassword, signInWithEmailAndPassword, updateProfile, setPersistence, browserLocalPersistence, browserSessionPersistence } from 'firebase/auth';
+import { createUserWithEmailAndPassword, signInWithEmailAndPassword, updateProfile, setPersistence, browserLocalPersistence, browserSessionPersistence, deleteUser } from 'firebase/auth';
 import { auth } from '../services/firebase';
-import { createUserProfile } from '../services/firestore';
+import { syncUserProfile } from '../services/firestore';
 import { UserProfile } from '../types';
 
 interface AuthProps {
@@ -45,9 +45,23 @@ export const Auth: React.FC<AuthProps> = ({ onLogin }) => {
 
       const firebaseUser = userCredential.user;
       
-      // Ensure profile exists in Firestore
-      const profile = await createUserProfile(firebaseUser);
-      onLogin(profile);
+      // Sync profile from Firestore. 
+      // If isSignUp=true, it will create it (since it's a new account).
+      // If isSignUp=false, it will fetch it.
+      const profile = await syncUserProfile(firebaseUser);
+      
+      if (profile) {
+        onLogin(profile);
+      } else {
+        // Handle Zombie Case: Auth user exists but Firestore profile missing (wiped)
+        // If we just signed up, this shouldn't happen unless error.
+        // If we signed in, this means the DB was wiped.
+        
+        // Auto-fix: Delete the zombie Auth user so they can sign up again properly
+        await deleteUser(firebaseUser);
+        setError('Account data missing (Database Wiped). Your account has been reset. Please Sign Up again.');
+        setIsSignUp(true); // Switch to Sign Up mode for convenience
+      }
 
     } catch (err: any) {
       console.error(err);
@@ -56,6 +70,7 @@ export const Auth: React.FC<AuthProps> = ({ onLogin }) => {
       if (err.code === 'auth/user-not-found') msg = 'Account not found. Please Sign Up.';
       if (err.code === 'auth/email-already-in-use') msg = 'Email already registered';
       if (err.code === 'auth/weak-password') msg = 'Password should be at least 6 characters';
+      if (err.code === 'auth/requires-recent-login') msg = 'Please login again to reset account.';
       setError(msg);
     } finally {
       setLoading(false);

@@ -21,7 +21,7 @@ import {
   completeDuel,
   updateUserGameStats,
   submitDuelSolution,
-  createUserProfile,
+  syncUserProfile,
   setUserOnlineStatus,
   subscribeToUserProfile
 } from './services/firestore';
@@ -33,6 +33,7 @@ const App: React.FC = () => {
   const [currentUser, setCurrentUser] = useState<UserProfile | null>(null);
   const [authLoading, setAuthLoading] = useState(true);
   const [view, setView] = useState<'lobby' | 'profile' | 'arena' | 'notifications'>('lobby');
+  const [targetProfileId, setTargetProfileId] = useState<string | null>(null);
   const [incomingChallenges, setIncomingChallenges] = useState<Challenge[]>([]);
   const [scheduledChallenges, setScheduledChallenges] = useState<Challenge[]>([]);
   const [winLossNotification, setWinLossNotification] = useState<string | null>(null);
@@ -51,7 +52,6 @@ const App: React.FC = () => {
     setResult,
     code,
     setCode,
-    startMatchmaking,
     startDuel,
     resetGame
   } = useGameEngine();
@@ -66,11 +66,16 @@ const App: React.FC = () => {
     const unsubscribe = onAuthStateChanged(auth, async (firebaseUser) => {
       if (firebaseUser) {
         try {
-          // Fetch or create profile to ensure we have the UserProfile object
-          const profile = await createUserProfile(firebaseUser);
-          setCurrentUser(profile);
+          const profile = await syncUserProfile(firebaseUser);
+          if (profile) {
+            setCurrentUser(profile);
+          } else {
+            await signOut(auth);
+            setCurrentUser(null);
+          }
         } catch (error) {
           console.error("Error fetching user profile:", error);
+          setCurrentUser(null);
         }
       } else {
         setCurrentUser(null);
@@ -86,19 +91,14 @@ const App: React.FC = () => {
     if (!currentUser?.uid) return;
 
     const handleVisibilityChange = () => {
-       // Only update to online when visible. 
-       // We DO NOT set offline on hidden (minimize) to prevent accidental forfeits.
        if (!document.hidden) {
            setUserOnlineStatus(currentUser.uid, 'online');
        }
     };
 
     document.addEventListener("visibilitychange", handleVisibilityChange);
-    
-    // Set initial status
     setUserOnlineStatus(currentUser.uid, 'online');
 
-    // Handle window close
     const handleBeforeUnload = () => {
         setUserOnlineStatus(currentUser.uid, 'offline');
     };
@@ -124,7 +124,6 @@ const App: React.FC = () => {
     const unsubscribe = subscribeToScheduledChallenges(currentUser.uid, (challenges) => {
       setScheduledChallenges(challenges);
 
-      // Auto-join if game is in_progress
       const activeGame = challenges.find(c => c.status === 'in_progress');
       
       if (activeGame) {
@@ -132,19 +131,15 @@ const App: React.FC = () => {
          const opponentName = isCreator ? activeGame.toName : activeGame.fromName;
          const opponentId = isCreator ? activeGame.toId : activeGame.fromId;
          const opponentAvatar = isCreator ? activeGame.toAvatar : activeGame.fromAvatar; 
-         // Fallback for avatar if toAvatar not yet saved in older records
          const finalOpponentAvatar = opponentAvatar || `https://api.dicebear.com/7.x/avataaars/svg?seed=${opponentId}`;
 
-         // If we are not in the arena yet, go there
          if (gameState === GameState.IDLE) {
              setActiveChallengeId(activeGame.id);
              setView('arena');
          } else if (activeChallengeId !== activeGame.id) {
-             // We are in a state but ID mismatch (rare, maybe multiple tabs or weird state)
              setActiveChallengeId(activeGame.id);
          }
 
-         // If the problem is ready and we haven't started the duel logic locally yet
          if (activeGame.problem && !problem) {
              startDuel(activeGame.problem, {
                 name: opponentName,
@@ -158,12 +153,11 @@ const App: React.FC = () => {
     return () => unsubscribe();
   }, [currentUser?.uid, gameState, activeChallengeId, startDuel, problem]); 
 
-  // 3. Listen to Active Duel Updates (Code Submission, Winner detection)
+  // 3. Listen to Active Duel Updates
   useEffect(() => {
     if (!activeChallengeId || !currentUser || !problem) return;
 
     const unsubscribe = subscribeToActiveDuel(activeChallengeId, async (challenge) => {
-      // A. Check for Winner (Game Over)
       if (challenge.status === 'completed' && challenge.winnerId) {
         if (gameState !== GameState.FINISHED) {
             setGameState(GameState.FINISHED);
@@ -171,13 +165,11 @@ const App: React.FC = () => {
             const isWin = challenge.winnerId === currentUser.uid;
             const isDraw = challenge.winnerId === 'DRAW';
             
-            // Get opponent details
             const isCreatorForCode = challenge.fromId === currentUser.uid;
             const opponentCode = isCreatorForCode ? challenge.toCode : challenge.fromCode;
             const opponentName = isCreatorForCode ? challenge.toName : challenge.fromName;
             const opponentAvatar = isCreatorForCode ? (challenge.toAvatar || `https://api.dicebear.com/7.x/avataaars/svg?seed=${challenge.toId}`) : challenge.fromAvatar;
 
-            // Determine Message based on Win Reason
             let resultMessage = isWin ? "Victory! The AI judge determined your code was superior." : "Defeat. The AI judge determined the opponent's code was better.";
             
             if (challenge.winReason === 'Surrender' || challenge.winReason === 'Disconnect') {
@@ -226,13 +218,11 @@ const App: React.FC = () => {
                });
             }
 
-            // Update stats locally
             if (!isDraw) updateUserGameStats(currentUser.uid, isWin ? 'win' : 'loss');
         }
         return;
       }
 
-      // B. Update Opponent Status based on Firestore
       const isCreator = challenge.fromId === currentUser.uid;
       const opponentCode = isCreator ? challenge.toCode : challenge.fromCode;
       
@@ -240,13 +230,10 @@ const App: React.FC = () => {
           setOpponent(prev => ({ ...prev, status: 'submitted' }));
       }
 
-      // C. JUDGING TRIGGER: If both submitted and no winner yet
       if (challenge.fromCode && challenge.toCode && !challenge.winnerId && gameState !== GameState.EVALUATING) {
-          // Both have submitted.
           setGameState(GameState.EVALUATING);
           
           if (isCreator) {
-              console.log("Both submitted. I am creator. Starting Judge...");
               const comparison = await compareSolutions(
                   problem, 
                   challenge.fromCode, 
@@ -270,14 +257,12 @@ const App: React.FC = () => {
   }, [activeChallengeId, currentUser, gameState, problem, setGameState, setUser, setOpponent, setResult]);
 
 
-  // 4. Background Loop: Check for Timeouts & Disconnects Monitor
+  // 4. Background Monitor
   useEffect(() => {
-      // Monitor Opponent Connection during a match
       if (gameState !== GameState.PLAYING || !activeChallengeId || !opponent.id || !currentUser) return;
 
       const unsubscribeOpponent = subscribeToUserProfile(opponent.id, async (oppProfile) => {
           if (oppProfile.status === 'offline') {
-              // Opponent disconnected! I win!
               await completeDuel(activeChallengeId, currentUser.uid, opponent.id, 'Disconnect');
           }
       });
@@ -292,14 +277,12 @@ const App: React.FC = () => {
       const now = Date.now();
       
       scheduledChallenges.forEach(async (challenge) => {
-         // Auto-start check
          if (challenge.status === 'accepted' && challenge.fromCheckedIn && challenge.toCheckedIn) {
             if (challenge.fromId === currentUser.uid) {
                await respondToChallenge(challenge.id, 'in_progress');
             }
          }
 
-         // Timeout check
          if (!challenge.scheduledTime || challenge.status !== 'accepted') return;
          const timeLimit = challenge.scheduledTime + (1 * 60 * 1000); 
          
@@ -324,6 +307,7 @@ const App: React.FC = () => {
 
   const handleNavigate = (newView: 'lobby' | 'profile' | 'notifications') => {
     if (gameState === GameState.IDLE || gameState === GameState.FINISHED) {
+      if (newView === 'profile') setTargetProfileId(null);
       setView(newView);
     }
   };
@@ -333,7 +317,6 @@ const App: React.FC = () => {
       await updateUserProfile(currentUser.uid, { status: 'offline' });
     }
     await signOut(auth);
-    // State will be cleared by onAuthStateChanged
     setView('lobby');
     resetGame();
   };
@@ -341,19 +324,10 @@ const App: React.FC = () => {
   const handleAcceptChallenge = async (challengeId: string) => {
     const challenge = incomingChallenges.find(c => c.id === challengeId);
     if (!challenge) return;
-    
-    // Optimistically remove from UI to prevent double clicks
     setIncomingChallenges(prev => prev.filter(c => c.id !== challengeId));
-
     await respondToChallenge(challengeId, 'accepted');
-    
     if (!challenge.scheduledTime) {
-        // Start immediately
         await respondToChallenge(challengeId, 'in_progress');
-        // The subscribeToScheduledChallenges listener will pick this up and switch view to arena
-        // even if the problem is null initially.
-    } else {
-        alert(`Duel accepted! Join the arena at ${new Date(challenge.scheduledTime).toLocaleTimeString()}.`);
     }
   };
 
@@ -376,35 +350,28 @@ const App: React.FC = () => {
 
   const handleUserSubmit = async () => {
     if (!activeChallengeId || !currentUser) return;
-    
-    // 1. Change Local State to Waiting
     setGameState(GameState.WAITING_FOR_OPPONENT);
     setUser(prev => ({ ...prev, status: 'submitted' }));
-    
-    // 2. Upload Code to Firestore
     const isCreator = scheduledChallenges.find(c => c.id === activeChallengeId)?.fromId === currentUser.uid;
     await submitDuelSolution(activeChallengeId, isCreator, code);
   };
 
   const handleForfeit = async () => {
     if (!activeChallengeId || !currentUser) return;
-    // I Lose. Opponent Wins.
-    
-    // Find challenge to ensure we have the correct opponent ID
     const challenge = scheduledChallenges.find(c => c.id === activeChallengeId);
     let opponentId = opponent.id;
     if (challenge) {
         opponentId = challenge.fromId === currentUser.uid ? challenge.toId : challenge.fromId;
     }
-
-    // Mark as completed with reason 'Surrender'
     await completeDuel(activeChallengeId, opponentId, currentUser.uid, 'Surrender');
   };
 
-  // If missing config, force configuration
-  if (!isConfigured) {
-    return <ConfigForm />;
-  }
+  const handleViewProfile = (uid: string) => {
+      setTargetProfileId(uid);
+      setView('profile');
+  };
+
+  if (!isConfigured) return <ConfigForm />;
 
   if (authLoading) {
     return (
@@ -414,9 +381,7 @@ const App: React.FC = () => {
     );
   }
 
-  if (!currentUser) {
-    return <Auth onLogin={setCurrentUser} />;
-  }
+  if (!currentUser) return <Auth onLogin={setCurrentUser} />;
 
   return (
     <div className="min-h-screen bg-dark-bg text-zinc-100 font-sans selection:bg-brand-500/30 flex flex-col">
@@ -432,11 +397,20 @@ const App: React.FC = () => {
       {view === 'lobby' && (
         <Lobby 
           currentUser={currentUser}
+          onViewProfile={handleViewProfile}
         />
       )}
 
       {view === 'profile' && (
-        <Profile currentUser={currentUser} onUpdateUser={setCurrentUser} />
+        <Profile 
+            currentUser={currentUser} 
+            onUpdateUser={setCurrentUser} 
+            targetUserId={targetProfileId} 
+            onBack={() => {
+                setView('lobby');
+                setTargetProfileId(null);
+            }}
+        />
       )}
 
       {view === 'notifications' && (
@@ -466,8 +440,6 @@ const App: React.FC = () => {
              </div>
              <h2 className="text-xl font-bold text-white mb-2">Preparing Battle Arena</h2>
              <p className="text-zinc-400">Generative AI is crafting your challenge...</p>
-             
-             {/* Exit button for stuck loading states */}
              <button 
                 onClick={handleForfeit}
                 className="mt-6 text-sm text-red-400 hover:text-red-300 underline underline-offset-4 cursor-pointer"
