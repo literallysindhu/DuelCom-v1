@@ -1,10 +1,10 @@
 import React from 'react';
-import { Terminal, Trophy, User, LogOut, Bell } from 'lucide-react';
+import { Terminal, Trophy, User, LogOut, Bell, HelpCircle } from 'lucide-react';
 
 interface NavbarProps {
-  onNavigate: (view: 'lobby' | 'profile' | 'notifications') => void;
+  onNavigate: (view: 'lobby' | 'profile' | 'notifications' | 'how-it-works') => void;
   onLogout: () => void;
-  currentView: 'lobby' | 'profile' | 'arena' | 'notifications';
+  currentView: 'lobby' | 'profile' | 'arena' | 'notifications' | 'how-it-works';
 }
 
 export const Navbar: React.FC<NavbarProps> = ({ onNavigate, onLogout, currentView }) => {
@@ -20,7 +20,18 @@ export const Navbar: React.FC<NavbarProps> = ({ onNavigate, onLogout, currentVie
         <span className="font-bold text-xl tracking-tight text-white">Duel<span className="text-brand-400">Com</span></span>
       </div>
       
-      <div className="flex items-center gap-6">
+      <div className="flex items-center gap-4 md:gap-6">
+        <button 
+          onClick={() => onNavigate('how-it-works')}
+          className={`flex items-center gap-2 transition-colors cursor-pointer ${
+            currentView === 'how-it-works' ? 'text-brand-400' : 'text-zinc-400 hover:text-white'
+          }`}
+          title="How it Works"
+        >
+          <HelpCircle className="w-4 h-4" />
+          <span className="text-sm font-medium hidden md:inline">How it Works</span>
+        </button>
+
         <button 
           onClick={() => onNavigate('notifications')}
           className={`flex items-center gap-2 transition-colors cursor-pointer ${
@@ -40,6 +51,7 @@ export const Navbar: React.FC<NavbarProps> = ({ onNavigate, onLogout, currentVie
           <User className="w-4 h-4" />
           <span className="text-sm font-medium hidden md:inline">Profile</span>
         </button>
+
         <button 
           onClick={onLogout}
           className="flex items-center gap-2 text-zinc-400 hover:text-red-400 transition-colors cursor-pointer"

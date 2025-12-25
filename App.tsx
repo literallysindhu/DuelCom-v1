@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { Navbar } from './components/Navbar';
 import { Lobby } from './components/Lobby';
 import { Arena } from './components/Arena';
@@ -6,6 +6,7 @@ import { ResultModal } from './components/ResultModal';
 import { Auth } from './components/Auth';
 import { Profile } from './components/Profile';
 import { NotificationsView } from './components/NotificationsView';
+import { HowItWorks } from './components/HowItWorks';
 import { ChallengeNotification } from './components/ChallengeNotification';
 import { ConfigForm } from './components/ConfigForm';
 import { useGameEngine } from './hooks/useGameEngine';
@@ -29,15 +30,21 @@ import { compareSolutions } from './services/geminiService';
 import { signOut, onAuthStateChanged } from 'firebase/auth';
 import { auth, isConfigured } from './services/firebase';
 
+const IDLE_TIMEOUT = 10 * 60 * 1000; // 10 minutes
+
 const App: React.FC = () => {
   const [currentUser, setCurrentUser] = useState<UserProfile | null>(null);
   const [authLoading, setAuthLoading] = useState(true);
-  const [view, setView] = useState<'lobby' | 'profile' | 'arena' | 'notifications'>('lobby');
+  const [view, setView] = useState<'lobby' | 'profile' | 'arena' | 'notifications' | 'how-it-works'>('lobby');
   const [targetProfileId, setTargetProfileId] = useState<string | null>(null);
   const [incomingChallenges, setIncomingChallenges] = useState<Challenge[]>([]);
   const [scheduledChallenges, setScheduledChallenges] = useState<Challenge[]>([]);
   const [winLossNotification, setWinLossNotification] = useState<string | null>(null);
   const [activeChallengeId, setActiveChallengeId] = useState<string | null>(null);
+  const [showPreLoginInfo, setShowPreLoginInfo] = useState(false);
+  
+  const isIdleRef = useRef(false);
+  const idleTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const {
     gameState,
@@ -86,18 +93,45 @@ const App: React.FC = () => {
     return () => unsubscribe();
   }, []);
 
-  // 0.5. Visibility/Presence Handler
+  // 0.5. Visibility & Inactivity Handler
   useEffect(() => {
     if (!currentUser?.uid) return;
+
+    const resetIdleTimer = () => {
+      if (isIdleRef.current) {
+        // Just came back from being idle
+        setUserOnlineStatus(currentUser.uid, 'online');
+        isIdleRef.current = false;
+      }
+
+      if (idleTimerRef.current) clearTimeout(idleTimerRef.current);
+      
+      idleTimerRef.current = setTimeout(() => {
+        // User has been inactive for IDLE_TIMEOUT
+        setUserOnlineStatus(currentUser.uid, 'offline');
+        isIdleRef.current = true;
+      }, IDLE_TIMEOUT);
+    };
 
     const handleVisibilityChange = () => {
        if (!document.hidden) {
            setUserOnlineStatus(currentUser.uid, 'online');
+           resetIdleTimer();
+       } else {
+           if (idleTimerRef.current) clearTimeout(idleTimerRef.current);
        }
     };
 
+    const activityEvents = ['mousedown', 'mousemove', 'keydown', 'scroll', 'touchstart'];
+    
+    activityEvents.forEach(evt => {
+      window.addEventListener(evt, resetIdleTimer);
+    });
+
     document.addEventListener("visibilitychange", handleVisibilityChange);
+    
     setUserOnlineStatus(currentUser.uid, 'online');
+    resetIdleTimer();
 
     const handleBeforeUnload = () => {
         setUserOnlineStatus(currentUser.uid, 'offline');
@@ -107,6 +141,10 @@ const App: React.FC = () => {
     return () => {
         document.removeEventListener("visibilitychange", handleVisibilityChange);
         window.removeEventListener("beforeunload", handleBeforeUnload);
+        activityEvents.forEach(evt => {
+          window.removeEventListener(evt, resetIdleTimer);
+        });
+        if (idleTimerRef.current) clearTimeout(idleTimerRef.current);
     };
   }, [currentUser?.uid]);
 
@@ -305,7 +343,7 @@ const App: React.FC = () => {
     return () => clearInterval(interval);
   }, [currentUser?.uid, scheduledChallenges]);
 
-  const handleNavigate = (newView: 'lobby' | 'profile' | 'notifications') => {
+  const handleNavigate = (newView: 'lobby' | 'profile' | 'notifications' | 'how-it-works') => {
     if (gameState === GameState.IDLE || gameState === GameState.FINISHED) {
       if (newView === 'profile') setTargetProfileId(null);
       setView(newView);
@@ -381,7 +419,16 @@ const App: React.FC = () => {
     );
   }
 
-  if (!currentUser) return <Auth onLogin={setCurrentUser} />;
+  if (!currentUser) {
+    if (showPreLoginInfo) {
+      return (
+        <div className="min-h-screen bg-dark-bg text-zinc-100 flex flex-col">
+          <HowItWorks preLogin onBack={() => setShowPreLoginInfo(false)} />
+        </div>
+      );
+    }
+    return <Auth onLogin={setCurrentUser} onShowHowItWorks={() => setShowPreLoginInfo(true)} />;
+  }
 
   return (
     <div className="min-h-screen bg-dark-bg text-zinc-100 font-sans selection:bg-brand-500/30 flex flex-col">
@@ -415,6 +462,10 @@ const App: React.FC = () => {
 
       {view === 'notifications' && (
         <NotificationsView currentUser={currentUser} />
+      )}
+
+      {view === 'how-it-works' && (
+        <HowItWorks onBack={() => setView('lobby')} />
       )}
 
       {view === 'arena' && (

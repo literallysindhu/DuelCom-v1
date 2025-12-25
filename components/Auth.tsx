@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { Terminal, Lock, Mail, ArrowRight, CheckSquare, Square } from 'lucide-react';
+import { Terminal, Lock, Mail, ArrowRight, CheckSquare, Square, AlertTriangle, HelpCircle } from 'lucide-react';
 import { createUserWithEmailAndPassword, signInWithEmailAndPassword, updateProfile, setPersistence, browserLocalPersistence, browserSessionPersistence, deleteUser } from 'firebase/auth';
 import { auth } from '../services/firebase';
 import { syncUserProfile } from '../services/firestore';
@@ -7,9 +7,10 @@ import { UserProfile } from '../types';
 
 interface AuthProps {
   onLogin: (user: UserProfile) => void;
+  onShowHowItWorks: () => void;
 }
 
-export const Auth: React.FC<AuthProps> = ({ onLogin }) => {
+export const Auth: React.FC<AuthProps> = ({ onLogin, onShowHowItWorks }) => {
   const [isSignUp, setIsSignUp] = useState(false);
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
@@ -27,13 +28,11 @@ export const Auth: React.FC<AuthProps> = ({ onLogin }) => {
         throw new Error('Email and password are required');
       }
 
-      // Set persistence based on checkbox
       await setPersistence(auth, rememberMe ? browserLocalPersistence : browserSessionPersistence);
 
       let userCredential;
       if (isSignUp) {
         userCredential = await createUserWithEmailAndPassword(auth, email, password);
-        // Set a default display name
         if (userCredential.user) {
             await updateProfile(userCredential.user, {
                 displayName: email.split('@')[0]
@@ -44,23 +43,14 @@ export const Auth: React.FC<AuthProps> = ({ onLogin }) => {
       }
 
       const firebaseUser = userCredential.user;
-      
-      // Sync profile from Firestore. 
-      // If isSignUp=true, it will create it (since it's a new account).
-      // If isSignUp=false, it will fetch it.
       const profile = await syncUserProfile(firebaseUser);
       
       if (profile) {
         onLogin(profile);
       } else {
-        // Handle Zombie Case: Auth user exists but Firestore profile missing (wiped)
-        // If we just signed up, this shouldn't happen unless error.
-        // If we signed in, this means the DB was wiped.
-        
-        // Auto-fix: Delete the zombie Auth user so they can sign up again properly
         await deleteUser(firebaseUser);
         setError('Account data missing (Database Wiped). Your account has been reset. Please Sign Up again.');
-        setIsSignUp(true); // Switch to Sign Up mode for convenience
+        setIsSignUp(true);
       }
 
     } catch (err: any) {
@@ -70,7 +60,6 @@ export const Auth: React.FC<AuthProps> = ({ onLogin }) => {
       if (err.code === 'auth/user-not-found') msg = 'Account not found. Please Sign Up.';
       if (err.code === 'auth/email-already-in-use') msg = 'Email already registered';
       if (err.code === 'auth/weak-password') msg = 'Password should be at least 6 characters';
-      if (err.code === 'auth/requires-recent-login') msg = 'Please login again to reset account.';
       setError(msg);
     } finally {
       setLoading(false);
@@ -78,7 +67,7 @@ export const Auth: React.FC<AuthProps> = ({ onLogin }) => {
   };
 
   return (
-    <div className="min-h-screen flex items-center justify-center bg-dark-bg p-4">
+    <div className="min-h-screen flex items-center justify-center bg-dark-bg p-4 flex-col">
       <div className="w-full max-w-md">
         <div className="text-center mb-8">
           <div className="inline-flex items-center justify-center p-3 bg-brand-500/10 rounded-xl mb-4">
@@ -128,7 +117,6 @@ export const Auth: React.FC<AuthProps> = ({ onLogin }) => {
               </div>
             </div>
 
-            {/* Remember Me Checkbox */}
             <div 
               className="flex items-center gap-2 cursor-pointer" 
               onClick={() => setRememberMe(!rememberMe)}
@@ -163,6 +151,13 @@ export const Auth: React.FC<AuthProps> = ({ onLogin }) => {
             </button>
           </form>
 
+          <div className="mt-6 p-4 bg-yellow-500/5 border border-yellow-500/10 rounded-xl flex gap-3">
+              <AlertTriangle className="w-5 h-5 text-yellow-500 shrink-0" />
+              <div className="text-xs text-zinc-400 leading-relaxed">
+                  <span className="font-bold text-yellow-500">Stability Note:</span> Due to the Pre-Alpha stage, if you experience login issues, your account may have been cleared in a database wipe. Please <span className="text-white font-bold">Sign Up</span> again.
+              </div>
+          </div>
+
           <p className="mt-8 text-center text-sm text-zinc-400">
             {isSignUp ? 'Already have an account?' : "Don't have an account?"}{' '}
             <button
@@ -174,6 +169,14 @@ export const Auth: React.FC<AuthProps> = ({ onLogin }) => {
             </button>
           </p>
         </div>
+
+        <button 
+          onClick={onShowHowItWorks}
+          className="mt-6 w-full flex items-center justify-center gap-2 text-zinc-500 hover:text-white transition-colors text-sm"
+        >
+          <HelpCircle className="w-4 h-4" />
+          How does DuelCom work?
+        </button>
       </div>
     </div>
   );
