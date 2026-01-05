@@ -1,9 +1,8 @@
-
 import React, { useState, useEffect, useRef } from 'react';
 // Added Loader2 to the lucide-react imports to fix the "Cannot find name 'Loader2'" error
 import { User, Trophy, XCircle, Edit2, Check, Search, Sword, CalendarClock, Trash2, AlertTriangle, Terminal, Camera, Upload, Smartphone, Wifi, ArrowLeft, Loader2 } from 'lucide-react';
 import { UserProfile, Difficulty, Language } from '../types';
-import { getAllUsers, updateUserProfile, sendChallenge, updateChallengeProblem, deleteUserProfile, resetAllData, subscribeToUserProfile } from '../services/firestore';
+import { getAllUsers, updateUserProfile, sendChallenge, updateChallengeProblem, deleteUserProfile, subscribeToUserProfile } from '../services/firestore';
 import { generateProblem } from '../services/geminiService';
 import { auth } from '../services/firebase';
 import { deleteUser, signOut } from 'firebase/auth';
@@ -109,15 +108,26 @@ export const Profile: React.FC<ProfileProps> = ({ currentUser, onUpdateUser, tar
     }
   };
 
-  const handleWipeDatabase = async () => {
-    const confirm = window.prompt("⚠️ NUKE ACTION ⚠️\n\nType 'NUKE' to confirm database wipe:");
-    if (confirm !== 'NUKE') return;
+  const handleDeleteAccount = async () => {
+    const confirm = window.confirm("Are you sure you want to delete your account? This action cannot be undone.");
+    if (!confirm) return;
+
     try {
-        await resetAllData();
-        await signOut(auth);
-    } catch (e) {
-        console.error(e);
-        alert("Wipe failed.");
+        if (currentUser.uid) {
+            await deleteUserProfile(currentUser.uid);
+        }
+        
+        const user = auth.currentUser;
+        if (user) {
+            await deleteUser(user);
+        }
+    } catch (e: any) {
+        console.error("Delete failed", e);
+        if (e.code === 'auth/requires-recent-login') {
+             alert("For security, please sign out and sign in again before deleting your account.");
+        } else {
+             alert("Failed to delete account. You might need to re-login.");
+        }
     }
   };
 
@@ -272,14 +282,14 @@ export const Profile: React.FC<ProfileProps> = ({ currentUser, onUpdateUser, tar
                 {isOwnProfile && (
                     <section className="pt-8 border-t border-dark-border">
                         <h3 className="text-xs font-bold text-red-500/50 uppercase tracking-widest mb-4 flex items-center gap-2">
-                           <Terminal className="w-4 h-4" /> Management Tools
+                           <AlertTriangle className="w-4 h-4" /> Danger Zone
                         </h3>
                         <div className="flex gap-4">
                             <button 
-                                onClick={handleWipeDatabase}
+                                onClick={handleDeleteAccount}
                                 className="flex-1 py-3 bg-red-500/5 hover:bg-red-500/10 text-red-500 border border-red-500/20 rounded-xl text-sm font-bold transition-all flex items-center justify-center gap-2"
                             >
-                                <Trash2 className="w-4 h-4" /> Reset Local Database
+                                <Trash2 className="w-4 h-4" /> Delete Account
                             </button>
                         </div>
                     </section>
