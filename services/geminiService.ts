@@ -4,7 +4,7 @@ import { Problem, Difficulty, Language } from '../types';
 
 // Helper to get AI instance safely using process.env.API_KEY exclusively as per guidelines
 const getAI = () => {
-  return new GoogleGenAI({ apiKey: process.env.API_KEY });
+  return new GoogleGenAI({ apiKey: import.meta.env.VITE_GEMINI_API_KEY });
 };
 
 // Helper to generate a random ID
