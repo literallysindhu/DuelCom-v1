@@ -1,13 +1,10 @@
-
 import { GoogleGenAI, Type } from "@google/genai";
 import { Problem, Difficulty, Language } from '../types';
 
-// Helper to get AI instance safely using process.env.API_KEY exclusively as per guidelines
 const getAI = () => {
   return new GoogleGenAI({ apiKey: import.meta.env.VITE_GEMINI_API_KEY });
 };
 
-// Helper to generate a random ID
 const generateId = () => Math.random().toString(36).substring(2, 9);
 
 const problemSchema = {
@@ -43,7 +40,7 @@ export const generateProblem = async (difficulty: Difficulty, language: Language
     For C and C++, provide the includes and the main structure or class if needed.`;
 
     const response = await ai.models.generateContent({
-      model: 'gemini-3-pro-preview',
+      model: 'gemini-2.0-flash',
       contents: prompt,
       config: {
         responseMimeType: "application/json",
@@ -63,7 +60,6 @@ export const generateProblem = async (difficulty: Difficulty, language: Language
   } catch (error) {
     console.error("Failed to generate problem:", error);
     
-    // Fallback logic remains same
     let fallbackCode = '';
     switch(language) {
         case Language.PYTHON: fallbackCode = 'def two_sum(nums, target):\n    # Your code here\n    pass'; break;
@@ -118,7 +114,7 @@ export const judgeSubmission = async (problem: Problem, code: string): Promise<J
     `;
 
     const response = await ai.models.generateContent({
-      model: 'gemini-3-pro-preview',
+      model: 'gemini-2.0-flash',
       contents: prompt,
       config: {
         responseMimeType: "application/json",
