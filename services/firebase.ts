@@ -40,7 +40,8 @@ const defaultConfig = {
 const firebaseConfig = hasEnvConfig ? envConfig : (localConfig?.firebase || defaultConfig);
 
 // Gemini Key: Obtained exclusively from the environment variable process.env.API_KEY per SDK guidelines
-export const geminiKey = process.env.API_KEY;
+export const geminiKey = import.meta.env.VITE_GEMINI_API_KEY;
+
 
 // Initialize Firebase safely
 let app: any;
