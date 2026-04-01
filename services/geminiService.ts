@@ -7,6 +7,22 @@ const getAI = () => {
 
 const generateId = () => Math.random().toString(36).substring(2, 9);
 
+const sleep = (ms: number) => new Promise(res => setTimeout(res, ms));
+
+const generateWithRetry = async (ai: any, params: any, retries = 3): Promise<any> => {
+  for (let i = 0; i < retries; i++) {
+    try {
+      return await ai.models.generateContent(params);
+    } catch (err: any) {
+      if (err?.status === 429 && i < retries - 1) {
+        await sleep(3000 * (i + 1));
+        continue;
+      }
+      throw err;
+    }
+  }
+};
+
 const problemSchema = {
   type: Type.OBJECT,
   properties: {
@@ -39,8 +55,8 @@ export const generateProblem = async (difficulty: Difficulty, language: Language
     Provide a clear description, input/output requirements, and starter code that includes the function signature in ${language}.
     For C and C++, provide the includes and the main structure or class if needed.`;
 
-    const response = await ai.models.generateContent({
-      model: 'gemini-2.0-flash',
+    const response = await generateWithRetry(ai, {
+      model: 'gemini-2.0-flash-lite',
       contents: prompt,
       config: {
         responseMimeType: "application/json",
@@ -113,8 +129,8 @@ export const judgeSubmission = async (problem: Problem, code: string): Promise<J
     Return a boolean verdict and a short feedback sentence.
     `;
 
-    const response = await ai.models.generateContent({
-      model: 'gemini-2.0-flash',
+    const response = await generateWithRetry(ai, {
+      model: 'gemini-2.0-flash-lite',
       contents: prompt,
       config: {
         responseMimeType: "application/json",
@@ -178,8 +194,8 @@ export const compareSolutions = async (
         IMPORTANT: In the reason, you MUST refer to the players by their names ("${nameA}" and "${nameB}"). Do not use "Player A", "Player B", "Solution A" or "Solution B" in the text response.
       `;
   
-      const response = await ai.models.generateContent({
-        model: 'gemini-2.0-flash',
+      const response = await generateWithRetry(ai, {
+        model: 'gemini-2.0-flash-lite',
         contents: prompt,
         config: {
           responseMimeType: "application/json",
